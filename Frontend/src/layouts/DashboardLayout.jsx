@@ -3,7 +3,9 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { 
   Home, 
   Bell, 
-  Settings
+  Settings,
+  Search,
+  FileText
 } from 'lucide-react';
 
 const DashboardLayout = ({ children, title = "Dashboard" }) => {
@@ -11,6 +13,7 @@ const DashboardLayout = ({ children, title = "Dashboard" }) => {
 
   const navItems = [
     { icon: <Home className="w-5 h-5" />, label: 'Home', path: '/doctor' },
+    { icon: <FileText className="w-5 h-5" />, label: 'Medical Records', path: '/doctor/records' },
   ];
 
   return (

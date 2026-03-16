@@ -3,6 +3,7 @@ import { useAuth } from './context/AuthContext';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import DoctorDashboard from './pages/DoctorDashboard';
+import MedicalRecords from './pages/MedicalRecords';
 import PatientDashboard from './pages/PatientDashboard';
 import Settings from './pages/Settings';
 import NotFound from './pages/NotFound';
@@ -34,6 +35,7 @@ function App() {
       
       {/* Doctor Routes */}
       <Route path="/doctor" element={<ProtectedRoute allowedRole="doctor"><DoctorDashboard /></ProtectedRoute>} />
+      <Route path="/doctor/records" element={<ProtectedRoute allowedRole="doctor"><MedicalRecords /></ProtectedRoute>} />
       
       {/* Patient Routes */}
       <Route path="/patient" element={<ProtectedRoute allowedRole="patient"><PatientDashboard /></ProtectedRoute>} />
