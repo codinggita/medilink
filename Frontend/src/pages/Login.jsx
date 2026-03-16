@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Mail, Lock, ArrowRight, ShieldCheck, CheckCircle2, User, Stethoscope, Loader2 } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import apiClient from '../api/apiClient';
+
 const Login = () => {
   const [role, setRole] = useState('patient');
   const [email, setEmail] = useState('');
@@ -16,12 +18,19 @@ const Login = () => {
     setIsSubmitting(true);
     setError('');
     
-    // Mock login logic for Feature 1 (Routing)
-    setTimeout(() => {
-      login({ email, role, token: 'mock-token' });
+    try {
+      const response = await apiClient.post('/auth/login', { email, password, role });
+      login(response.data);
       navigate(role === 'doctor' ? '/doctor' : '/patient');
+    } catch (err) {
+      if (!err.response) {
+        setError('Server connection failed. Please ensure the backend server is running (port 5000).');
+      } else {
+        setError(err.response?.data?.message || 'Invalid credentials. Please try again.');
+      }
+    } finally {
       setIsSubmitting(false);
-    }, 1000);
+    }
   };
 
   return (

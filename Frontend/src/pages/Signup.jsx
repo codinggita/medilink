@@ -39,12 +39,15 @@ const Signup = () => {
     setIsSubmitting(true);
     setError('');
     
-    // Mock registration logic for Feature 1 (Routing)
-    setTimeout(() => {
-      login({ ...formData, role, token: 'mock-token' });
+    try {
+      const response = await apiClient.post('/auth/register', { ...formData, role });
+      login(response.data);
       navigate(role === 'doctor' ? '/doctor' : '/patient');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Signup failed. Please try again.');
+    } finally {
       setIsSubmitting(false);
-    }, 1000);
+    }
   };
 
   return (
