@@ -6,7 +6,8 @@ import {
   Bell,
   Search,
   Plus,
-  User as UserIcon
+  User as UserIcon,
+  FolderOpen
 } from 'lucide-react';
 
 const PatientLayout = ({ children }) => {
@@ -14,6 +15,7 @@ const PatientLayout = ({ children }) => {
 
   const navItems = [
     { icon: <Home className="w-5 h-5" />, label: 'Home', path: '/patient' },
+    { icon: <FolderOpen className="w-5 h-5" />, label: 'Files', path: '/patient/files' },
     { icon: <UserIcon className="w-5 h-5" />, label: 'Profile', path: '/patient/profile' },
   ];
 

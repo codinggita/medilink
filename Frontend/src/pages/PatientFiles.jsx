@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import PatientLayout from '../layouts/PatientLayout';
 import { 
   Search, 
@@ -15,14 +15,8 @@ import {
   X
 } from 'lucide-react';
 
-const STORAGE_KEY_FILES = 'medilink_patient_files';
-
-const defaultFiles = [
-  { id: 1, name: 'Discharge Summary - City Hospital', type: 'PDF', size: '2.4 MB', date: 'Oct 15, 2023', iconType: 'pdf', uploadedBy: 'Dr. Sarah Chen', blobUrl: null },
-  { id: 2, name: 'Post-Op Care Instructions', type: 'DOCX', size: '845 KB', date: 'Oct 02, 2023', iconType: 'doc', uploadedBy: 'Nurse Emily', blobUrl: null },
-  { id: 3, name: 'EKG Scan Results', type: 'JPG', size: '4.1 MB', date: 'Sept 28, 2023', iconType: 'img', uploadedBy: 'North Memorial Lab', blobUrl: null },
-  { id: 4, name: 'Annual Physical Report', type: 'PDF', size: '1.2 MB', date: 'Aug 10, 2023', iconType: 'pdf', uploadedBy: 'Dr. James Wilson', blobUrl: null },
-];
+import apiClient, { apiOrigin } from '../api/apiClient';
+import useDebounce from '../hooks/useDebounce';
 
 function FileIcon({ type }) {
   if (type === 'pdf') return <FileText className="w-5 h-5 text-red-500" />;
@@ -32,32 +26,55 @@ function FileIcon({ type }) {
 
 const PatientFiles = () => {
   const fileInputRef = useRef(null);
-  const [fileList, setFileList] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_FILES);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return defaultFiles;
-  });
+  const [fileList, setFileList] = useState([]);
   const [openMenuId, setOpenMenuId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 350);
   const [activeFilter, setActiveFilter] = useState('All');
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const fileFormats = ['All', ...new Set(defaultFiles.map(f => f.type))];
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const limit = 10;
 
-  const filteredFiles = fileList.filter(file => {
-    const matchesSearch = file.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          file.uploadedBy.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = activeFilter === 'All' || file.type === activeFilter;
-    return matchesSearch && matchesFilter;
-  });
-
-  // Save to localStorage when fileList changes
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_FILES, JSON.stringify(fileList));
+  const fileFormats = useMemo(() => {
+    const set = new Set(fileList.map(f => f.fileType));
+    return ['All', ...Array.from(set)];
   }, [fileList]);
 
+  const filteredFiles = useMemo(() => {
+    const q = debouncedSearch.trim().toLowerCase();
+    return fileList.filter((file) => {
+      const matchesSearch = !q || (file.fileName || '').toLowerCase().includes(q);
+      const matchesFilter = activeFilter === 'All' || file.fileType === activeFilter;
+      return matchesSearch && matchesFilter;
+    });
+  }, [fileList, debouncedSearch, activeFilter]);
+
+  async function fetchFiles(nextPage = 1) {
+    setLoading(true);
+    setError('');
+    try {
+      const patientId = localStorage.getItem('patientId') || '';
+      const res = await apiClient.get('/files', {
+        params: { patientId, page: nextPage, limit }
+      });
+      setFileList(res.data.data || []);
+      setPage(res.data.page || nextPage);
+      setTotalPages(res.data.totalPages || 1);
+    } catch (e) {
+      setError(e?.response?.data?.message || 'Failed to load files');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchFiles(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Close dropdown when clicking outside
   useEffect(() => {
     const handler = () => setOpenMenuId(null);
@@ -69,54 +86,68 @@ const PatientFiles = () => {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (file) {
-      const ext = file.name.split('.').pop()?.toLowerCase();
-      let iconType = 'doc';
-      if (ext === 'pdf') iconType = 'pdf';
-      else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) iconType = 'img';
+      setLoading(true);
+      setError('');
+      try {
+        const patientId = localStorage.getItem('patientId') || '';
+        const doctorId = localStorage.getItem('doctorId') || '';
 
-      const blobUrl = URL.createObjectURL(file);
-      const newFile = {
-        id: Date.now(),
-        name: file.name,
-        type: ext?.toUpperCase() || 'FILE',
-        size: file.size < 1024 * 1024
-          ? (file.size / 1024).toFixed(0) + ' KB'
-          : (file.size / 1024 / 1024).toFixed(1) + ' MB',
-        date: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
-        iconType,
-        uploadedBy: 'You (Patient)',
-        blobUrl,
-      };
-      setFileList(prev => [newFile, ...prev]);
-      e.target.value = '';
+        // Basic fileType inference (backend enum)
+        const ext = file.name.split('.').pop()?.toLowerCase();
+        const fileType = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext) ? 'IMAGE'
+          : ['mp4', 'mov', 'avi'].includes(ext) ? 'VIDEO'
+          : 'DOCUMENT';
+
+        const form = new FormData();
+        form.append('file', file);
+        form.append('patientId', patientId);
+        form.append('doctorId', doctorId);
+        form.append('fileType', fileType);
+
+        await apiClient.post('/files/upload', form, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+
+        await fetchFiles(1);
+      } catch (err) {
+        setError(err?.response?.data?.message || 'Upload failed');
+      } finally {
+        setLoading(false);
+        e.target.value = '';
+      }
     }
   };
 
   const handleView = (f) => {
-    if (f.blobUrl) {
-      window.open(f.blobUrl, '_blank');
-    } else {
-      alert(`"${f.name}" is a demo record.\nIn the full app, this would open a secure document viewer.`);
-    }
+    if (f.fileUrl) window.open(`${apiOrigin}${f.fileUrl}`, '_blank');
   };
 
   const handleDownload = (f) => {
-    if (f.blobUrl) {
-      const a = document.createElement('a');
-      a.href = f.blobUrl;
-      a.download = f.name;
-      a.click();
-    } else {
-      alert(`"${f.name}" is a demo record.\nIn the full app, this would trigger a secure download.`);
-    }
+    if (!f.fileUrl) return;
+    const a = document.createElement('a');
+    a.href = `${apiOrigin}${f.fileUrl}`;
+    a.download = f.fileName || 'file';
+    a.click();
   };
 
-  const handleDelete = (id) => {
-    setFileList(prev => prev.filter(f => f.id !== id));
+  const handleDelete = async (id) => {
     setOpenMenuId(null);
+    const ok = window.confirm('Delete this file?');
+    if (!ok) return;
+
+    setLoading(true);
+    setError('');
+    try {
+      await apiClient.delete(`/files/${id}`);
+      setFileList(prev => prev.filter(f => f._id !== id));
+    } catch (e) {
+      setError(e?.response?.data?.message || 'Delete failed');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const toggleMenu = (e, id) => {
@@ -189,6 +220,11 @@ const PatientFiles = () => {
             </div>
         </div>
 
+        {error ? (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-5 py-4 rounded-2xl font-bold text-sm">
+            {error}
+          </div>
+        ) : null}
         {/* Storage Quick Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-primary-50 border border-primary-100 p-6 rounded-3xl space-y-4">
@@ -246,28 +282,36 @@ const PatientFiles = () => {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
-                        {filteredFiles.length > 0 ? (
+                        {loading ? (
+                            <tr>
+                              <td colSpan="5" className="px-8 py-10 text-center text-slate-500 font-semibold">
+                                Loading…
+                              </td>
+                            </tr>
+                        ) : filteredFiles.length > 0 ? (
                             filteredFiles.map((f) => (
-                                <tr key={f.id} className="group hover:bg-slate-50 transition-colors">
+                                <tr key={f._id} className="group hover:bg-slate-50 transition-colors">
                                     <td className="px-8 py-5">
                                         <div className="flex items-center gap-4">
                                             <div className="p-2.5 bg-white shadow-sm border border-slate-100 rounded-xl relative group-hover:-translate-y-1 transition-transform">
-                                                <FileIcon type={f.iconType} />
+                                                <FileIcon type={(f.fileType || 'DOCUMENT') === 'IMAGE' ? 'img' : (f.fileName || '').toLowerCase().endsWith('.pdf') ? 'pdf' : 'doc'} />
                                             </div>
-                                            <p className="font-bold text-slate-900 text-sm max-w-[250px] truncate">{f.name}</p>
+                                            <p className="font-bold text-slate-900 text-sm max-w-[250px] truncate">{f.fileName}</p>
                                         </div>
                                     </td>
                                     <td className="px-8 py-5">
                                         <div className="flex flex-col gap-1">
-                                            <span className="text-xs font-bold text-slate-700">{f.type}</span>
-                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{f.size}</span>
+                                            <span className="text-xs font-bold text-slate-700">{f.fileType}</span>
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">—</span>
                                         </div>
                                     </td>
                                     <td className="px-8 py-5">
-                                        <p className="text-xs text-slate-600 font-bold">{f.uploadedBy}</p>
+                                        <p className="text-xs text-slate-600 font-bold">Secure Upload</p>
                                     </td>
                                     <td className="px-8 py-5">
-                                        <p className="text-xs text-slate-500 font-medium italic">{f.date}</p>
+                                        <p className="text-xs text-slate-500 font-medium italic">
+                                          {f.uploadDate ? new Date(f.uploadDate).toLocaleDateString() : '—'}
+                                        </p>
                                     </td>
                                     <td className="px-8 py-5 text-right">
                                         <div className="flex items-center justify-end gap-2">
@@ -287,13 +331,13 @@ const PatientFiles = () => {
                                             </button>
                                             <div className="relative">
                                                 <button 
-                                                    onClick={(e) => toggleMenu(e, f.id)}
+                                                    onClick={(e) => toggleMenu(e, f._id)}
                                                     className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all"
                                                     title="More options"
                                                 >
                                                     <MoreVertical className="w-5 h-5" />
                                                 </button>
-                                                {openMenuId === f.id && (
+                                                {openMenuId === f._id && (
                                                     <div 
                                                         className="absolute right-0 top-full mt-1 w-44 bg-white border border-slate-100 rounded-2xl shadow-xl z-50 overflow-hidden"
                                                         onClick={e => e.stopPropagation()}
@@ -312,7 +356,7 @@ const PatientFiles = () => {
                                                         </button>
                                                         <div className="border-t border-slate-100 mx-2" />
                                                         <button 
-                                                            onClick={() => handleDelete(f.id)}
+                                                            onClick={() => handleDelete(f._id)}
                                                             className="w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-red-500 hover:bg-red-50 transition-colors"
                                                         >
                                                             <Trash2 className="w-4 h-4" /> Delete
@@ -343,9 +387,25 @@ const PatientFiles = () => {
                     </tbody>
                 </table>
             </div>
-            
-            <div className="p-6 border-t border-slate-50 flex justify-center text-sm font-bold text-primary-600 hover:text-primary-700 cursor-pointer">
-                View All Files
+
+            <div className="p-6 border-t border-slate-50 flex items-center justify-between">
+              <button
+                onClick={() => fetchFiles(Math.max(1, page - 1))}
+                disabled={loading || page <= 1}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-bold text-slate-700 disabled:opacity-50"
+              >
+                Prev
+              </button>
+              <span className="text-sm font-bold text-slate-500">
+                Page {page} / {totalPages}
+              </span>
+              <button
+                onClick={() => fetchFiles(Math.min(totalPages, page + 1))}
+                disabled={loading || page >= totalPages}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-bold text-slate-700 disabled:opacity-50"
+              >
+                Next
+              </button>
             </div>
         </div>
 

@@ -10,11 +10,11 @@ import PatientDashboard from './pages/PatientDashboard';
 import MyRecords from './pages/MyRecords';
 import ProjectSpec from './pages/ProjectSpec';
 import DoctorProfile from './pages/DoctorProfile';
+import PatientFiles from './pages/PatientFiles';
+import Settings from './pages/Settings';
 import NotFound from './pages/NotFound';
 import MyDoctors from './pages/MyDoctors';
-import PatientFiles from './pages/PatientFiles';
 import PatientProfile from './pages/PatientProfile';
-import Settings from './pages/Settings';
 
 const ProtectedRoute = ({ children, allowedRole }) => {
   const { user, loading } = useAuth();
