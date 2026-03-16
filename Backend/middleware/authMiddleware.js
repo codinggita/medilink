@@ -12,6 +12,15 @@ const protect = async (req, res, next) => {
             // Get token from header
             token = req.headers.authorization.split(' ')[1];
 
+            // Hackathon/dev fallback: allow mock token used by frontend demo auth.
+            if (token === 'mock-token') {
+                req.user = {
+                    id: req.headers['x-user-id'] || 'demo-user',
+                    role: req.headers['x-user-role'] || 'doctor'
+                };
+                return next();
+            }
+
             // Verify token
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
 

@@ -1,7 +1,14 @@
 import axios from 'axios';
 
+const apiOrigin = import.meta?.env?.VITE_API_URL
+  ? import.meta.env.VITE_API_URL.replace(/\/$/, '')
+  : 'http://localhost:5000';
+
+const baseURL = import.meta?.env?.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api`
+  : 'http://localhost:5000/api';
 const apiClient = axios.create({
-  baseURL: 'http://localhost:5000/api', // Default port for your backend
+  baseURL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -14,6 +21,19 @@ apiClient.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    // Pass basic user context for mock-token dev auth
+    try {
+      const rawUser = localStorage.getItem('user');
+      if (rawUser) {
+        const u = JSON.parse(rawUser);
+        if (u?.role) config.headers['x-user-role'] = u.role;
+        if (u?.id) config.headers['x-user-id'] = u.id;
+      }
+    } catch {
+      // ignore
+    }
+
     return config;
   },
   (error) => {
@@ -21,4 +41,5 @@ apiClient.interceptors.request.use(
   }
 );
 
+export { apiOrigin };
 export default apiClient;
