@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import DashboardLayout from '../layouts/DashboardLayout';
 import { useDebounce } from '../hooks/useDebounce';
+import { useError } from '../context/ErrorContext';
+import { ErrorDisplay } from '../components/ErrorDisplay';
 import { 
   Users, 
   Plus, 
@@ -27,25 +29,29 @@ const Patients = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setPageError] = useState(null);
   const itemsPerPage = 6;
+  const { showError } = useError();
 
   // CRUD State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPatient, setEditingPatient] = useState(null);
   const [formData, setFormData] = useState({ name: '', age: '', status: 'STABLE' });
-  const [error, setError] = useState('');
+  const [formError, setFormError] = useState('');
   const nameInputRef = useRef(null);
 
   // Fetch Data
   const fetchPatients = async () => {
     setLoading(true);
+    setPageError(null);
     try {
         const response = await apiClient.get('/patients', {
             params: { search: debouncedSearch, status: statusFilter !== 'All' ? statusFilter : undefined }
         });
         setPatients(response.data);
     } catch (err) {
-        console.error('Fetch error:', err);
+        setPageError(err.message || 'Failed to load patients');
+        showError(err.message || 'Failed to load patients');
     } finally {
         setLoading(false);
     }
@@ -82,14 +88,16 @@ const Patients = () => {
         try {
             await apiClient.delete(`/patients/${id}`);
             fetchPatients();
+            showError('Patient deleted successfully', 3000);
         } catch (err) {
-            alert('Failed to delete patient');
+            showError(err.message || 'Failed to delete patient');
         }
     }
   };
 
   const handleSave = async (e) => {
     e.preventDefault();
+    setFormError('');
     try {
         if (editingPatient) {
             await apiClient.put(`/patients/${editingPatient.id}`, formData);
@@ -99,12 +107,22 @@ const Patients = () => {
         setIsModalOpen(false);
         fetchPatients();
     } catch (err) {
-        setError('Operation failed. Please try again.');
+        setFormError(err.message || 'Failed to save patient');
     }
   };
+
   return (
     <DashboardLayout>
       <div className="space-y-8 pb-12">
+        {/* Error Display */}
+        {error && (
+          <ErrorDisplay 
+            title="Failed to Load Patients" 
+            message={error} 
+            onRetry={fetchPatients}
+          />
+        )}
+
         {/* Header Section */}
         <div className="flex items-center justify-between">
           <div className="space-y-1">
