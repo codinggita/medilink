@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mail, Lock, ArrowRight, ShieldCheck, User, Stethoscope, Loader2, UserPlus } from 'lucide-react';
+import { Mail, Lock, ArrowRight, ShieldCheck, User, Stethoscope, Loader2, UserPlus, AlertCircle, Check, X } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import apiClient from '../api/apiClient';
+import { validateEmail, validatePassword, validateName, validateConfirmPassword, validatePasswordStrength } from '../utils/validation';
 
 const Signup = () => {
   const [role, setRole] = useState('patient');
@@ -13,27 +15,71 @@ const Signup = () => {
   });
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [touched, setTouched] = useState({});
+  const [errors, setErrors] = useState({});
+  const [passwordStrength, setPasswordStrength] = useState(null);
   const { login } = useAuth();
   const navigate = useNavigate();
   
-  // Requirement: Demonstrate usage of useRef
   const nameInputRef = useRef(null);
 
   useEffect(() => {
-    // Auto-focus on name field when component mounts
     if (nameInputRef.current) {
         nameInputRef.current.focus();
     }
   }, []);
 
+  const validateField = (name, value) => {
+    switch (name) {
+      case 'name': return validateName(value);
+      case 'email': return validateEmail(value);
+      case 'password': return validatePassword(value);
+      case 'confirmPassword': return validateConfirmPassword(formData.password, value);
+      default: return '';
+    }
+  };
+
   const handleChange = (e) => {
-    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    
+    if (name === 'password') {
+      const strength = validatePasswordStrength(value);
+      setPasswordStrength(strength);
+    }
+    
+    if (touched[name]) {
+      setErrors(prev => ({ ...prev, [name]: validateField(name, value) }));
+    }
+  };
+
+  const handleBlur = (e) => {
+    const { name, value } = e.target;
+    setTouched(prev => ({ ...prev, [name]: true }));
+    setErrors(prev => ({ ...prev, [name]: validateField(name, value) }));
   };
 
   const handleSignup = async (e) => {
     e.preventDefault();
-    if (formData.password !== formData.confirmPassword) {
-      return setError('Passwords do not match');
+    
+    const nameError = validateName(formData.name);
+    const emailError = validateEmail(formData.email);
+    const passwordError = validatePassword(formData.password);
+    const confirmError = validateConfirmPassword(formData.password, formData.confirmPassword);
+    
+    const newErrors = {
+      name: nameError,
+      email: emailError,
+      password: passwordError,
+      confirmPassword: confirmError
+    };
+    
+    const allTouched = { name: true, email: true, password: true, confirmPassword: true };
+    setTouched(allTouched);
+    setErrors(newErrors);
+    
+    if (nameError || emailError || passwordError || confirmError) {
+      return;
     }
     
     setIsSubmitting(true);
@@ -83,50 +129,120 @@ const Signup = () => {
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700 ml-1">Full Name</label>
               <div className="relative group">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-primary-500 transition-colors" />
+                <User className={`absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors ${touched.name && errors.name ? 'text-red-400' : 'text-slate-400 group-focus-within:text-primary-500'}`} />
                 <input 
                   ref={nameInputRef}
                   name="name"
                   value={formData.name}
                   onChange={handleChange}
+                  onBlur={handleBlur}
                   type="text" 
                   placeholder="Enter your name"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3.5 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-primary-500/20 transition-all font-medium"
-                  required
+                  className={`w-full bg-slate-50 border rounded-xl py-3.5 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-primary-500/20 transition-all font-medium ${touched.name && errors.name ? 'border-red-400 focus:ring-red-500/20 focus:border-red-400' : 'border-slate-200 focus:border-primary-500'}`}
                 />
               </div>
+              {touched.name && errors.name && (
+                <div className="flex items-center gap-1 text-red-500 text-xs font-medium ml-1">
+                  <AlertCircle className="w-3 h-3" />
+                  {errors.name}
+                </div>
+              )}
             </div>
 
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700 ml-1">Email Address</label>
               <div className="relative group">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-primary-500 transition-colors" />
+                <Mail className={`absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors ${touched.email && errors.email ? 'text-red-400' : 'text-slate-400 group-focus-within:text-primary-500'}`} />
                 <input 
                   name="email"
                   value={formData.email}
                   onChange={handleChange}
+                  onBlur={handleBlur}
                   type="email" 
                   placeholder="name@example.com"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3.5 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-primary-500/20 transition-all font-medium"
-                  required
+                  className={`w-full bg-slate-50 border rounded-xl py-3.5 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-primary-500/20 transition-all font-medium ${touched.email && errors.email ? 'border-red-400 focus:ring-red-500/20 focus:border-red-400' : 'border-slate-200 focus:border-primary-500'}`}
                 />
               </div>
+              {touched.email && errors.email && (
+                <div className="flex items-center gap-1 text-red-500 text-xs font-medium ml-1">
+                  <AlertCircle className="w-3 h-3" />
+                  {errors.email}
+                </div>
+              )}
             </div>
 
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700 ml-1">Password</label>
               <div className="relative group">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-primary-500 transition-colors" />
+                <Lock className={`absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors ${touched.password && errors.password ? 'text-red-400' : 'text-slate-400 group-focus-within:text-primary-500'}`} />
                 <input 
                   name="password"
                   value={formData.password}
                   onChange={handleChange}
+                  onBlur={handleBlur}
                   type="password" 
                   placeholder="••••••••"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3.5 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-primary-500/20 transition-all font-medium"
-                  required
+                  className={`w-full bg-slate-50 border rounded-xl py-3.5 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-primary-500/20 transition-all font-medium ${touched.password && errors.password ? 'border-red-400 focus:ring-red-500/20 focus:border-red-400' : 'border-slate-200 focus:border-primary-500'}`}
                 />
               </div>
+              {passwordStrength && formData.password && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full transition-all duration-300 rounded-full ${
+                          passwordStrength.strength < 40 ? 'bg-red-500' : 
+                          passwordStrength.strength < 80 ? 'bg-yellow-500' : 'bg-green-500'
+                        }`}
+                        style={{ width: `${passwordStrength.strength}%` }}
+                      />
+                    </div>
+                    <span className={`text-[10px] font-bold ${
+                      passwordStrength.strength < 40 ? 'text-red-500' : 
+                      passwordStrength.strength < 80 ? 'text-yellow-600' : 'text-green-600'
+                    }`}>
+                      {passwordStrength.strength < 40 ? 'Weak' : 
+                       passwordStrength.strength < 80 ? 'Medium' : 'Strong'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1">
+                    {passwordStrength.requirements.map((req, idx) => (
+                      <div key={idx} className={`flex items-center gap-1 text-[10px] ${req.passed ? 'text-green-600' : 'text-slate-400'}`}>
+                        {req.passed ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                        {req.message}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {touched.password && errors.password && (
+                <div className="flex items-center gap-1 text-red-500 text-xs font-medium ml-1">
+                  <AlertCircle className="w-3 h-3" />
+                  {errors.password}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700 ml-1">Confirm Password</label>
+              <div className="relative group">
+                <Lock className={`absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors ${touched.confirmPassword && errors.confirmPassword ? 'text-red-400' : 'text-slate-400 group-focus-within:text-primary-500'}`} />
+                <input 
+                  name="confirmPassword"
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  type="password" 
+                  placeholder="••••••••"
+                  className={`w-full bg-slate-50 border rounded-xl py-3.5 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-primary-500/20 transition-all font-medium ${touched.confirmPassword && errors.confirmPassword ? 'border-red-400 focus:ring-red-500/20 focus:border-red-400' : 'border-slate-200 focus:border-primary-500'}`}
+                />
+              </div>
+              {touched.confirmPassword && errors.confirmPassword && (
+                <div className="flex items-center gap-1 text-red-500 text-xs font-medium ml-1">
+                  <AlertCircle className="w-3 h-3" />
+                  {errors.confirmPassword}
+                </div>
+              )}
             </div>
 
             {error && (
